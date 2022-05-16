@@ -7,12 +7,17 @@ cmake 3.17.5
 ninja 1.8.2
 Xilinx Vitis 2020.1
 sudo pip3 install joblib psutil
-clang/llvm 13+ from source https://github.com/llvm/llvm-project
+clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
 
+In addition, the following optional packages may be useful
+```
+LibXAIE is a backend target used to execute designs in hardware: https://github.com/Xilinx/embeddedsw/tree/master/XilinxProcessorIPLib/drivers/aiengine
+```
+
 Currently, the only supported target is the Xilinx VCK190 board, running Ubuntu-based Linux, however
-the tools are largely board and device indepdendent and can be adapted to other environments.
+the tools are largely board and device independent and can be adapted to other environments.
 
 ## Building on X86
 
@@ -48,6 +53,7 @@ mkdir build; cd build
 cmake -GNinja \
     -DLLVM_DIR=${absolute path to LLVMBUILD}/lib/cmake/llvm \
     -DMLIR_DIR=${absolute path to LLVMBUILD}/lib/cmake/mlir \
+    -DLibXAIE_DIR=${absolute path to LibXAIE} \
     -DCMAKE_MODULE_PATH=${absolute path to cmakeModules}/ \
     -DVitisSysroot=${SYSROOT} \
     -DCMAKE_BUILD_TYPE=Debug \
@@ -81,4 +87,4 @@ setenv LD_LIBRARY_PATH ${MLIRAIE}/lib:${LD_LIBRARY_PATH}
 
 -----
 
-<p align="center">Copyright&copy; 2019-2021 Xilinx</p>
+<p align="center">Copyright&copy; 2019-2022 AMD/Xilinx</p>
