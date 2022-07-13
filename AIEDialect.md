@@ -11,20 +11,6 @@ switch is referred to as 'switchbox' to avoid confusion with the
 
 [TOC]
 
-## Type constraint definition
-
-### AIE array type
-
-
-
-### AIE ObjectFifoSubview type
-
-
-
-### AIE objectFifo type
-
-
-
 ## Operation definition
 
 ### `AIE.amsel` (::xilinx::AIE::AMSelOp)
@@ -1615,7 +1601,9 @@ operation ::= `AIE.useLock` `(` $lock `,` $action `,` $value ( `,` $blocking^ )?
 
 This operation uses a lock. A lock can be acquired with a value, or release with a value.
 This should be understood as a "blocking" operation.  This lock must appear in a parent op
-where the tile can be determined (A CoreOp, a ShimDMAOp, or a MemOp).
+where the tile can be determined (A CoreOp, a ShimDMAOp, or a MemOp).  If the useLock
+operation appears in a module directly, an initialization to the lock will be generated in
+the host implementation.
 
 #### Attributes:
 
@@ -1681,4 +1669,18 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 | :-----: | ----------- |
 | `source` | index
 | `dest` | index
+
+## Type constraint definition
+
+### AIE array type
+
+
+
+### AIE ObjectFifoSubview type
+
+
+
+### AIE objectFifo type
+
+
 
