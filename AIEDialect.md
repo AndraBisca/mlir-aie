@@ -57,32 +57,6 @@ Traits: HasParent<SwitchboxOp>
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.array.load` (::xilinx::AIE::ArrayLoadOp)
-
-Load operation for aie arrays
-
-
-Syntax:
-
-```
-operation ::= `AIE.array.load` attr-dict `(` $array `:` type($array) `,` $index `)` `:` type($output)
-```
-
-Given an aie.array and an index value, outputs the element at that position from the array
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `array` | AIE array type
-| `index` | index
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `output` | any type
-
 ### `AIE.buffer` (::xilinx::AIE::BufferOp)
 
 Declare a buffer
@@ -240,31 +214,6 @@ Interfaces: FlowEndPoint
 | Result | Description |
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
-
-### `AIE.createArray` (::xilinx::AIE::CreateArrayOp)
-
-Create an aie array
-
-
-Syntax:
-
-```
-operation ::= `AIE.createArray` attr-dict `(` $operands `:` type($operands) `)` `:` type($output)
-```
-
-Creates an aie.array with the input values of given type
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `operands` | any type
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `output` | AIE array type
 
 ### `AIE.dmaBd` (::xilinx::AIE::DMABDOp)
 
@@ -879,7 +828,8 @@ operation ::= `AIE.objectFifo.createObjectFifo` `(` $producerTile `,` $consumerT
 
 The "aie.createObjectFifo" operation creates a circular buffer established between a producer and
 a consumer, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
-buffers (of given output type) and their locks in the Memory Module of the producer tile.
+buffers (of given output type) and their locks in the Memory Module of the producer tile after lowering. 
+These elements represent the conceptual depth of the objectFifo.
 
 This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
 locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
@@ -1671,10 +1621,6 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 | `dest` | index
 
 ## Type constraint definition
-
-### AIE array type
-
-
 
 ### AIE ObjectFifoSubview type
 
