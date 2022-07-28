@@ -776,13 +776,13 @@ Acquire operation to lock and return objects of an ObjectFifo
 Syntax:
 
 ```
-operation ::= `AIE.objectFifo.acquire` attr-dict `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
+operation ::= `AIE.objectFifo.acquire` attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
 ```
 
-The "aie.objectFifo.acquire" operation first acquires the locks of the next given number of objects 
-in the objectFifo. The mode it acquires the locks in is chosen based on the "port" attribute 
-(producer: acquire for write, consumer: acquire for read). Then, it returns a subview of the acquired 
-objects which can be used to access them.
+The "aie.objectFifo.acquire" operation first acquires the locks of the next given number 
+of objects in the objectFifo. The mode it acquires the locks in is chosen based on the port 
+(producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
+the acquired objects which can be used to access them.
 
 This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations on 
 the locks of the objectFifo objects that will be acquired. Under the hood, the operation only performs
@@ -793,7 +793,7 @@ greater than two, only (size - 2) useLock operations will be performed).
 
 Example:
 ```
-  %subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+  %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
 ```
 This operation acquires the locks of the next two objects in objFifo from its consumer port and returns a subview of the acquired objects.
 
@@ -801,6 +801,7 @@ This operation acquires the locks of the next two objects in objFifo from its co
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
+| `port` | xilinx::AIE::ObjectFifoPortAttr | Ports of an object FIFO
 | `size` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Operands:
@@ -868,7 +869,7 @@ Operation that produces the acquire/release patterns for a process registered to
 Syntax:
 
 ```
-operation ::= `AIE.objectFifo.registerProcess` attr-dict `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)`
+operation ::= `AIE.objectFifo.registerProcess` attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)`
 ```
 
 The "aie.registerProcess" operation allows the user to register a function to an objectFifo along with its 
@@ -885,7 +886,7 @@ Example:
   %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
   func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
 
-  AIE.objectFifo.registerProcess{port = "produce"}(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+  AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
 ```
 This operation registers function @producer_work and associated patterns to the produce end of %objFifo. 
 @producer_work will be called with the subviews produced when acquiring elements from %objFifo following the acquire pattern.
@@ -897,6 +898,7 @@ If the input patterns are cyclo-static then they must be of the same size.
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
+| `port` | xilinx::AIE::ObjectFifoPortAttr | Ports of an object FIFO
 | `callee` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
 
 #### Operands:
@@ -916,18 +918,18 @@ Release operation for object locks in an ObjectFifo
 Syntax:
 
 ```
-operation ::= `AIE.objectFifo.release` attr-dict `(` $fifo `:` type($fifo) `,` $size `)`
+operation ::= `AIE.objectFifo.release` attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)`
 ```
 
-The "aie.objectFifo.release" operation releases the locks of the given number of objects in the
-objectFifo. The mode it releases the locks in is chosen based on the "port" attribute 
+The "aie.objectFifo.release" operation releases the locks of the given number of objects 
+in the objectFifo. The mode it releases the locks in is chosen based on the "port" 
 (producer: release for read, consumer: release for write). 
 
 This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations.
 
 Example:
 ```
-  AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+  AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 ```
 This operation releases the lock of the next object in objFifo from producer port.
 
@@ -935,6 +937,7 @@ This operation releases the lock of the next object in objFifo from producer por
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
+| `port` | xilinx::AIE::ObjectFifoPortAttr | Ports of an object FIFO
 | `size` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Operands:
@@ -958,7 +961,7 @@ operation ::= `AIE.objectFifo.subview.access` $subview `[` $index `]` attr-dict 
 
 Example:
   ```
-    %subview = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+    %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
     %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
   ```
   In this example, elem is the first object of the subview. Note that this may not correspond to the first element of 
