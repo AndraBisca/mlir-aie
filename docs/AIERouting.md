@@ -1,6 +1,6 @@
 ﻿# AIE Flows and Routing
 
-Introduction on how to connect tiles in the AIE physical dialect
+Introduction on how to connect tiles in the AIE physical dialect. The explanations follow a bottom-up approach starting from the routing steps to perform at AIE physical dialect level and continuing with higher level abstractions in the latter part of the document.
 
 ## AIE Tile Routing
 
@@ -94,6 +94,51 @@ Similarly, flows can be used to connect to/from the PL over a distance:
 ```
 AIE.flow(%t70, "PLIO" : 0, %t73, "DMA" : 0)
 AIE.flow(%t73, "DMA" : 1, %t70, "PLIO" : 4)
+```
+
+## AIE Multicast
+
+In the case that multiple flows have the same source and different destinations as is the case in a broadcast scenario, a multicast can be used to express this routing.
+
+For example, the two flows below,
+
+```
+AIE.flow(%t73, "DMA" : 0, %t71, "DMA" : 0)
+AIE.flow(%t73, "DMA" : 0, %t72, "DMA" : 1)
+```
+
+can be expressed as:
+
+```
+AIE.multicast(%73, "DMA" : 0){
+  AIE.multi_dest<%71, "DMA" : 0>
+  AIE.multi_dest<%72, "DMA" : 1>
+}
+```
+
+## AIE Object FIFO
+
+At a higher abstraction level, object FIFOs can be created between tiles. The object FIFO lowering pass will establish the routing between the tiles and additionally configure the tile DMAs when needed (i.e., in the case that the tiles do not share memory). This can be useful to test designs on different configurations of AIE tiles without rewriting the routing and DMA code.
+
+The information required to create an object FIFO is the same independently of whether the tiles share memory or not.
+
+```
+%t71 = AIE.tile(7, 1) // (Column, Row)
+%t72 = AIE.tile(7, 2)
+%t73 = AIE.tile(7, 3)
+
+%objFifo1 = AIE.objectFifo.createObjectFifo(%t71, {%t72}, 2) : !AIE.objectFifo<memref<16xi32>> // shared memory
+%objFifo1 = AIE.objectFifo.createObjectFifo(%t71, {%t73}, 2) : !AIE.objectFifo<memref<16xi32>> // non-shared memory
+```
+
+Object FIFOs also support broadcast from one source tile to many destination tiles. In this case, DMAs are configured on all tiles even if they share memory.
+
+```
+%t71 = AIE.tile(7, 1) // (Column, Row)
+%t72 = AIE.tile(7, 2)
+%t73 = AIE.tile(7, 3)
+
+%broadcast = AIE.objectFifo.createObjectFifo(%t71, {%t72, %t73}, 2) : !AIE.objectFifo<memref<16xi32>> 
 ```
 
 ## Visualizing Routing
