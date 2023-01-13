@@ -834,7 +834,7 @@ Example:
       AIE.useLock(%lock, "Acquire", 0)
       AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
       AIE.useLock(%lock, "Release", 1)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }
@@ -972,6 +972,44 @@ Traits: SingleBlockImplicitTerminator<EndOp>
 | :-----: | ----------- |
 | `tile` | index
 
+### `AIE.nextBd` (::xilinx::AIE::NextBDOp)
+
+The next buffer descriptor
+
+
+Syntax:
+
+```
+operation ::= `AIE.nextBd` $dest attr-dict
+```
+
+This operation terminates the basic block describing a buffer descriptor inside
+a tile or shim DMA operation.  It references a single following buffer descriptor.
+Note that unlike other terminators (like cf.br), canonicalization should not remove
+the 'nextBd' terminator, since it would result in invalid buffer descriptors.
+
+Example:
+```
+  m73 = AIE.mem(%t73) {
+      %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+    ^bd0:
+      AIE.useLock(%lock, "Acquire", 0)
+      AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
+      AIE.useLock(%lock, "Release", 1)
+      AIE.nextBd ^bd0
+    ^end:
+      AIE.end
+  }
+```
+
+Traits: HasParent<MemOp, func::FuncOp, ShimDMAOp>, Terminator
+
+#### Successors:
+
+| Successor | Description |
+| :-------: | ----------- |
+| `dest` | any successor
+
 ### `AIE.objectFifo.acquire` (::xilinx::AIE::ObjectFifoAcquireOp)
 
 Acquire operation to lock and return objects of an ObjectFifo
@@ -1042,7 +1080,7 @@ not adjacent.
 
 Example:
 ```
-  %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13, %tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
+  %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {tile13, tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
 ```
 This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
 
@@ -1087,7 +1125,7 @@ Example:
   %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
   %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
   %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
-  AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
+  AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
 ```
 This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
 
@@ -1590,7 +1628,7 @@ Example:
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buf : memref<512 x i16>, 0, 512>, 0)
       AIE.useLock(%lock1, Release, 0)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }
