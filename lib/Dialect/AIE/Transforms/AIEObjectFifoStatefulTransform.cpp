@@ -54,6 +54,42 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 };
 
 //===----------------------------------------------------------------------===//
+// Memory Analysis
+//===----------------------------------------------------------------------===//
+class MemoryAnalysis {
+  DenseMap<std::pair<Value, int>, int> locksPerTile;
+
+public:
+  MemoryAnalysis(DeviceOp &device) {
+    // go over each core and check whether it has a specified stackSize
+    if (auto core = tile.getCoreOp()) {
+      stacksize = core.getStackSize();
+      address += stacksize;
+    }
+    // if it does, also check the 
+    // then, go over all buffers and note that if any of them has a specified address
+  }
+
+  /// Given a tile, returns next usable lockID for that tile.
+  int allocObjFifo(DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
+    // for each obj in the of, it should be added to a new bank, if there is enough room
+    const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
+    uint32_t localMemSize = target_model.getLocalMemorySize();
+    uint32_t base_addr = target_model.getMemInternalBaseAddress([tileOp.getCol(), tileOp.getRow()]);
+    for (auto o : objects) {
+      auto addr = getMemAddress(tileOp);
+      o->setAttr("address", rewriter.getI32IntegerAttr(addr));
+    }
+  }
+
+  /// Given a tile, returns next usable lockID for that tile.
+  int64_t getMemAddress(TileOp &tileOp) {
+    // return the address after checking which bank is supposed to be next, but only if it 
+    // still has enough room
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Lock Analysis
 //===----------------------------------------------------------------------===//
 class LockAnalysis {
@@ -1146,6 +1182,7 @@ struct AIEObjectFifoStatefulTransformPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
+    MemoryAnalysis memAnalysis(device);
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
@@ -1254,6 +1291,11 @@ struct AIEObjectFifoStatefulTransformPass
         splitFifos.push_back({createOp, splitConsumerFifos});
       }
     }
+
+    //===------------------------------------------------------------------===//
+    // Allocate L1/L2 addresses
+    //===------------------------------------------------------------------===//
+    memAnalysis.allocObjFifo(buffersPerFifo);
 
     //===------------------------------------------------------------------===//
     // Create flows and tile DMAs
