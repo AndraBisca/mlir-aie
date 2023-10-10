@@ -194,6 +194,12 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
     "memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
+  let options = [
+    Option<"enableObjectAllocation", "enable-object-alloc",
+           "bool", /*default=*/"false",
+           "Enable objectFifo lowering pass to allocate memory addresses "
+           "to the `AIE.BufferOps` it generates.">
+  ];
 }
 
 def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> {

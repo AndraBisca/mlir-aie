@@ -57,35 +57,67 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 // Memory Analysis
 //===----------------------------------------------------------------------===//
 class MemoryAnalysis {
-  DenseMap<std::pair<Value, int>, int> locksPerTile;
+  DenseMap<TileOp, std::vector<int64_t>> bankOffsetsPerCore;
 
 public:
   MemoryAnalysis(DeviceOp &device) {
-    // go over each core and check whether it has a specified stackSize
-    if (auto core = tile.getCoreOp()) {
-      stacksize = core.getStackSize();
-      address += stacksize;
+    // account for core's stackSize (currently it goes in the first bank)
+    const auto &target_model = xilinx::AIE::getTargetModel(device);
+    for (auto core : device.getOps<CoreOp>()) {
+      // TODO: use function to retrieve number of banks instead of hard-coded '4'
+      auto tileOp = core.getTileOp();
+      std::vector<int64_t> bankOffsets = {0, 0, 0, 0};
+      uint32_t base_addr = target_model.getMemInternalBaseAddress({tileOp.getCol(), tileOp.getRow()});
+      auto stacksize = core.getStackSize();
+      bankOffsets.push_back(base_addr + stacksize);
+      for (int i = 0; i < 3; i++)
+        bankOffsets.push_back(0);
+      bankOffsetsPerCore[tileOp] = bankOffsets;
     }
-    // if it does, also check the 
-    // then, go over all buffers and note that if any of them has a specified address
+    // TODO: go over all buffers and note if any of them have a specified address
   }
 
-  /// Given a tile, returns next usable lockID for that tile.
-  int allocObjFifo(DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
-    // for each obj in the of, it should be added to a new bank, if there is enough room
-    const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
-    uint32_t localMemSize = target_model.getLocalMemorySize();
-    uint32_t base_addr = target_model.getMemInternalBaseAddress([tileOp.getCol(), tileOp.getRow()]);
-    for (auto o : objects) {
-      auto addr = getMemAddress(tileOp);
-      o->setAttr("address", rewriter.getI32IntegerAttr(addr));
-    }
-  }
+  /// Function that allocates the objects of each objectFifo in different banks
+  /// in a round-robin fashion.
+  // TODO: also do this for MemTiles L2
+  // TODO: use function to retrieve number of banks instead of hard-coded '4'
+  void allocObjFifo(OpBuilder &builder, DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
+    // for each objFifo, each object should be added to a new bank, if there is enough room
+    for (auto &[objFifo, objects] : buffersPerFifo) {
+      int bankIndex = 0;
+      auto tileOp = objFifo.getProducerTileOp();
+      if (tileOp.isMemTile())
+        continue;
 
-  /// Given a tile, returns next usable lockID for that tile.
-  int64_t getMemAddress(TileOp &tileOp) {
-    // return the address after checking which bank is supposed to be next, but only if it 
-    // still has enough room
+      const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
+      uint32_t localMemSize = target_model.getLocalMemorySize();
+      auto bankSize = localMemSize / 4;
+      
+      for (auto o : objects) {
+        int64_t addr = 0;
+        auto objSize = o.getAllocationSize();
+
+        if (bankOffsetsPerCore.find(tileOp) == bankOffsetsPerCore.end())
+          bankOffsetsPerCore[tileOp] = {0, 0, 0, 0};
+
+        for (int i = 0; i < 4; i++) {
+          bankIndex %= 4;
+          if (bankOffsetsPerCore[tileOp][bankIndex] < bankSize) {
+            auto lastAddr = bankOffsetsPerCore[tileOp][bankIndex];
+            if ((lastAddr + objSize) <= bankSize) {
+              addr = lastAddr + (bankIndex * bankSize);
+              bankOffsetsPerCore[tileOp][bankIndex] += objSize;
+              bankIndex++;
+              break;
+            }
+          }
+          bankIndex++;
+          if (i == 3)
+            tileOp->emitOpError("no more memory available on tile");
+        }
+        o->setAttr("address", builder.getI32IntegerAttr(addr));
+      }
+    }
   }
 };
 
@@ -1244,11 +1276,11 @@ struct AIEObjectFifoStatefulTransformPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
+    auto ctx = device->getContext();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     MemoryAnalysis memAnalysis(device);
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
-    auto ctx = device->getContext();
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
 
@@ -1386,7 +1418,8 @@ struct AIEObjectFifoStatefulTransformPass
     //===------------------------------------------------------------------===//
     // Allocate L1/L2 addresses
     //===------------------------------------------------------------------===//
-    memAnalysis.allocObjFifo(buffersPerFifo);
+    if (this->enableObjectAllocation)
+      memAnalysis.allocObjFifo(builder, buffersPerFifo);
 
     //===------------------------------------------------------------------===//
     // Create flows and tile DMAs

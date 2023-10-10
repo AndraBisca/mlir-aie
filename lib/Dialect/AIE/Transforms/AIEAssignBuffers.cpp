@@ -22,19 +22,27 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-static int64_t assignAddress(AIE::BufferOp op, int64_t lastAddress,
+static int64_t assignAddress(AIE::BufferOp op, int64_t bankSize,
+                             std::vector<int64_t> &nextAddrInBanks,
                              OpBuilder &rewriter) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPointToEnd(Op->getBlock());
+  int64_t exceededAddress = bankSize * 4 + 1;
 
-  int64_t startAddr = lastAddress;
-  int64_t endAddr = startAddr + op.getAllocationSize();
-  if (Op->getAttrOfType<IntegerAttr>("address")) {
-    Op->emitWarning("Overriding existing address");
+  for (int i = 0; i < 4; i++) {
+    int64_t startAddr = nextAddrInBanks[i];
+    int64_t endAddr = startAddr + op.getAllocationSize();
+    if (endAddr < (bankSize * (i + 1))) {
+      nextAddrInBanks[i] = endAddr;
+      Op->setAttr("address", rewriter.getI32IntegerAttr(startAddr));
+      // Fixme: alignment
+      return endAddr;
+    } else if (i == 3) {
+      Op->setAttr("address", rewriter.getI32IntegerAttr(startAddr));
+      exceededAddress = endAddr;
+    }
   }
-  Op->setAttr("address", rewriter.getI32IntegerAttr(startAddr));
-  // Fixme: alignment
-  return endAddr;
+  return exceededAddress;
 }
 
 struct AIEAssignBufferAddressesPass
@@ -58,22 +66,7 @@ struct AIEAssignBufferAddressesPass
     }
 
     for (auto tile : device.getOps<TileOp>()) {
-      const auto &target_model = getTargetModel(tile);
-      int max_data_memory_size = 0;
-      if (tile.isMemTile())
-        max_data_memory_size = target_model.getMemTileSize();
-      else
-        max_data_memory_size = target_model.getLocalMemorySize();
-      SmallVector<BufferOp, 4> buffers;
-      // Collect all the buffers for this tile.
-      for (auto buffer : device.getOps<BufferOp>())
-        if (buffer.getTileOp() == tile)
-          buffers.push_back(buffer);
-      // Sort by allocation size.
-      std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
-        return a.getAllocationSize() > b.getAllocationSize();
-      });
-
+      std::vector<int64_t> nextAddrInBanks = {0, 0, 0, 0};
       // Address range owned by the MemTile is 0x80000.
       // Address range owned by the tile is 0x8000,
       // but we need room at the bottom for stack.
@@ -82,9 +75,46 @@ struct AIEAssignBufferAddressesPass
       if (auto core = tile.getCoreOp()) {
         stacksize = core.getStackSize();
         address += stacksize;
+        nextAddrInBanks[0] += stacksize;
       }
+      const auto &target_model = getTargetModel(tile);
+      int max_data_memory_size = 0;
+      if (tile.isMemTile())
+        max_data_memory_size = target_model.getMemTileSize();
+      else
+        max_data_memory_size = target_model.getLocalMemorySize();
+      auto bankSize = max_data_memory_size / 4;
+      SmallVector<BufferOp, 4> buffers;
+      // Collect all the buffers without an existing address for this tile.
+      for (auto buffer : device.getOps<BufferOp>()) {
+        if (buffer.getTileOp() == tile) {
+          if (auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address")) {
+            auto addr = addrAttr.getInt();
+            if ((0 <= addr) && (addr < bankSize)) {
+              if (addr >= nextAddrInBanks[0])
+                nextAddrInBanks[0] = addr + buffer.getAllocationSize();
+            } else if (addr < bankSize * 2) {
+              if (addr >= nextAddrInBanks[1])
+                nextAddrInBanks[1] = addr + buffer.getAllocationSize();
+            } else if (addr < bankSize * 3) {
+              if (addr >= nextAddrInBanks[2])
+                nextAddrInBanks[2] = addr + buffer.getAllocationSize();
+            } else {
+              if (addr >= nextAddrInBanks[3])
+                nextAddrInBanks[3] = addr + buffer.getAllocationSize();
+            }
+          } else {
+            buffers.push_back(buffer);
+          }
+        }
+      }
+      // Sort by allocation size.
+      std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
+        return a.getAllocationSize() > b.getAllocationSize();
+      });
+
       for (auto buffer : buffers)
-        address = assignAddress(buffer, address, builder);
+        address += assignAddress(buffer, bankSize, nextAddrInBanks, builder);
       if (address > max_data_memory_size) {
         InFlightDiagnostic error =
             tile.emitOpError("allocated buffers exceeded available memory\n");
